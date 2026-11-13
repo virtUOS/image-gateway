@@ -16,6 +16,10 @@ dependencies = [
     "prometheus-client>=0.20",
 ]
 
+[project.urls]
+Repository = "https://github.com/virtUOS/image-gateway"
+Changelog = "https://github.com/virtUOS/image-gateway/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 # The real checkers and the watermark. Only the container needs them; the tests use fakes.
 models = [
