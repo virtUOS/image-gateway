@@ -37,16 +37,22 @@ client → (LiteLLM) → Caddy → image-gateway → vLLM-Omni
 ## Watermark
 
 Every returned image carries an invisible [TrustMark](https://github.com/adobe/trustmark)
-watermark (MIT, code and weights; variant Q, BCH_5, payload `GATEWAY_WATERMARK_PAYLOAD`). It is
-the machine-readable marking that EU AI Act Art. 50(2) asks of AI-generated images, and it
-survives resizing and JPEG re-encoding, which matters because chat front ends such as LibreChat
-re-encode generated images and drop embedded metadata. Detect it with:
+watermark (MIT, code and weights; variant Q, BCH_5). It is the machine-readable marking that
+EU AI Act Art. 50(2) asks of AI-generated images, and it survives resizing and JPEG
+re-encoding, which matters because chat front ends such as LibreChat re-encode generated
+images and drop embedded metadata. Detect it with:
 
 ```python
 from trustmark import TrustMark
 
 secret, present, schema = TrustMark(model_type="Q").decode(image, MODE="text")
 ```
+
+The payload (`secret` above) says whose gateway marked the image. Set your own with
+`GATEWAY_WATERMARK_PAYLOAD` (default `KI-UOS`). It must be **1 to 8 printable ASCII
+characters**, e.g. `AI-TUM` or `KI-UNI-X`. TrustMark doesn't refuse anything else, it garbles
+it: `AI-UNIVERSITY` decodes as `AI-UNIVEP`, `KI-Ü` as `KI-\`. So the gateway refuses to start
+with such a payload. Whatever the text, a detector sees that the image is watermarked.
 
 ## Defaults
 
