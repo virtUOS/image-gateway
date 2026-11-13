@@ -43,7 +43,7 @@ container then, with `UV_PYTHON_DOWNLOADS=never` and `UV_PYTHON=/usr/local/bin/p
    Metric labels stay limited to endpoint, outcome, stage and category.
 4. **Keep the error format.** Blocks are HTTP 400 with `code: content_policy_violation` and a
    message starting "Rejected by the safety system of this image service". Clients rely on it,
-   for example the agent instructions in kiwi (librechat-setup, `scripts/bilder-flux/`).
+   for example chat agents whose instructions tell the user what happened when they see it.
 5. **Keep torch out of the core.** Only `models.py` imports torch, transformers or trustmark.
    Put new logic in `policy.py` or `app.py`, where the tests reach it without a GPU.
 6. **Don't change the watermark variant or encoding casually.** TrustMark can only decode an
