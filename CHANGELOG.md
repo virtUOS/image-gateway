@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The image runs Python 3.15 (was 3.12) and is built with uv 0.13.8. Checked on the GPU: every
+  prompt and image decision and the watermark are the same as on 3.12.
+- CI also runs the test suite on the Python version the image is built from (read from the
+  `FROM python:` line of the Dockerfile), so a base-image bump is tested, not only built.
+
 ## [0.1.0] - 2026-11-13
 
 ### Added
