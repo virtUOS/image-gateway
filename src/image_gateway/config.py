@@ -2,13 +2,17 @@
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Qwen3Guard categories. "Unsafe" in any of these blocks a prompt.
+# Qwen3Guard categories. "Unsafe" in any of these blocks a prompt. "Politically Sensitive
+# Topics" is where it files Nazi symbols (a swastika poster came back Unsafe with only this
+# category); benign political motifs come back Safe. PII and Copyright Violation stay open:
+# names in prompts are common, and the agents handle copyrighted characters.
 DEFAULT_BLOCK_UNSAFE = [
     "Sexual Content or Sexual Acts",
     "Violent",
     "Non-violent Illegal Acts",
     "Suicide & Self-Harm",
     "Unethical Acts",
+    "Politically Sensitive Topics",
     "Jailbreak",
 ]
 # "Controversial" blocks only here: nudity and suggestive content are not allowed at all.

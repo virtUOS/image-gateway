@@ -25,8 +25,14 @@ def test_controversial_sexual_is_blocked_but_controversial_violence_is_not():
 
 
 def test_unsafe_in_an_unlisted_category_passes():
-    # Politically Sensitive Topics is tuned for another legal context; the agents handle it.
-    assert not prompt("Unsafe", "Politically Sensitive Topics").blocked
+    # Names in prompts are common; the agents handle copyrighted characters.
+    assert not prompt("Unsafe", "PII").blocked
+    assert not prompt("Unsafe", "Copyright Violation").blocked
+
+
+def test_nazi_symbols_filed_as_politically_sensitive_are_blocked():
+    assert prompt("Unsafe", "Politically Sensitive Topics").blocked
+    assert not prompt("Controversial", "Politically Sensitive Topics").blocked
 
 
 def test_unparsable_prompt_answer_fails_closed():
