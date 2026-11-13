@@ -61,8 +61,8 @@ goes in before the requested `output_format` is encoded.
 
 All settings are `GATEWAY_*` environment variables (lists and dicts as JSON); see
 [`config.py`](src/image_gateway/config.py). The container needs a GPU, `HF_TOKEN` with access to
-ShieldGemma 2, and the Hugging Face cache mounted at `/root/.cache/huggingface/hub`. Both
-checkers together take roughly 17 GB of GPU memory.
+ShieldGemma 2, and the Hugging Face cache mounted at `/root/.cache/huggingface/hub`. Both checkers plus TrustMark take
+15.8 GiB of GPU memory (measured on an L40S).
 
 ## Development
 
