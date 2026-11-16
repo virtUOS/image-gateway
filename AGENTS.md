@@ -13,7 +13,7 @@ it. This file covers what you need to know to change it safely.
 | `src/image_gateway/policy.py` | pure decision logic: when a prompt or an image is blocked, parsing the prompt checker's answer |
 | `src/image_gateway/config.py` | every setting (`GATEWAY_*`), the default block lists and thresholds, the watermark payload check |
 | `src/image_gateway/models.py` | the real safety models and TrustMark (torch, transformers). Only the container imports it |
-| `src/image_gateway/images.py` | decoding, encoding and size parsing |
+| `src/image_gateway/images.py` | decoding, encoding, size parsing and the visible AI label |
 | `tests/fakes.py` | stand-ins for both safety models, the watermark and vLLM |
 | `scripts/check_models.py` | calibration run with the real models on a GPU host |
 | `CHANGELOG.md` | the changelog in Keep a Changelog format. New entries go under `[Unreleased]` |

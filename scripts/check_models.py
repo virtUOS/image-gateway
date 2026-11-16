@@ -20,6 +20,7 @@ import httpx
 from PIL import Image
 
 from image_gateway.config import Settings
+from image_gateway.images import add_label
 from image_gateway.models import QwenPromptGuard, ShieldGemmaImageGuard, TrustMarkWatermarker
 from image_gateway.policy import judge_image, judge_prompt
 
@@ -146,6 +147,10 @@ def main() -> int:
         print(f"{label:24s} present={present} secret={secret!r}")
     secret, present = watermarker.detect(marked_sample)
     print(f"{'unmarked original':24s} present={present} secret={secret!r}")
+    # The gateway draws the visible label first and marks afterwards. The mark must still decode.
+    labelled = watermarker.apply(add_label(marked_sample, settings.ai_label_text))
+    secret, present = watermarker.detect(labelled)
+    print(f"{'visible label + mark':24s} present={present} secret={secret!r}")
     print(f"\n{wrong} unexpected decisions")
     return 1 if wrong else 0
 
