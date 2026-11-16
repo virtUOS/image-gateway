@@ -29,3 +29,32 @@ def test_the_payload_comes_from_the_environment(monkeypatch):
     monkeypatch.setenv("GATEWAY_WATERMARK_PAYLOAD", "AI-UNIVERSITY")
     with pytest.raises(ValidationError):
         Settings()
+
+
+def test_the_visible_label_is_off_by_default():
+    settings = Settings()
+    assert (settings.ai_label, settings.ai_label_text) == ("off", "KI-generiert")
+
+
+def test_label_mode_and_text_come_from_the_environment(monkeypatch):
+    monkeypatch.setenv("GATEWAY_AI_LABEL", "mandatory")
+    monkeypatch.setenv("GATEWAY_AI_LABEL_TEXT", "Mit KI erzeugt")
+    settings = Settings()
+    assert (settings.ai_label, settings.ai_label_text) == ("mandatory", "Mit KI erzeugt")
+
+
+def test_an_unknown_label_mode_stops_startup(monkeypatch):
+    monkeypatch.setenv("GATEWAY_AI_LABEL", "always")
+    with pytest.raises(ValidationError):
+        Settings()
+
+
+@pytest.mark.parametrize("text", ["AI-generated", "Mit KI erzeugt – Ü", "x" * 40])
+def test_readable_label_texts_are_accepted(text):
+    assert Settings(ai_label_text=text).ai_label_text == text
+
+
+@pytest.mark.parametrize("text", ["", "   ", "x" * 41, "KI\ngeneriert"])
+def test_label_texts_that_would_hide_or_break_the_label_are_refused(text):
+    with pytest.raises(ValidationError):
+        Settings(ai_label_text=text)
