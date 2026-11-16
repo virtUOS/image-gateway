@@ -1,5 +1,13 @@
+import pytest
+
 from image_gateway.config import DEFAULT_BLOCK_CONTROVERSIAL, DEFAULT_BLOCK_UNSAFE
-from image_gateway.policy import PromptResult, judge_image, judge_prompt
+from image_gateway.policy import (
+    PromptResult,
+    judge_image,
+    judge_prompt,
+    parse_ai_label,
+    wants_label,
+)
 
 THRESHOLDS = {"sexual": 0.5, "dangerous": 0.5, "violence": 0.5}
 
@@ -53,3 +61,44 @@ def test_image_at_threshold_is_blocked_with_the_worst_policy():
 def test_missing_policy_score_fails_closed():
     verdict = judge_image({"sexual": 0.1}, THRESHOLDS, "output")
     assert verdict.blocked and verdict.category.startswith("unscored:")
+
+
+@pytest.mark.parametrize(
+    ("mode", "requested", "expected"),
+    [
+        ("off", None, False),
+        ("off", True, False),
+        ("off", False, False),
+        ("optional", None, False),
+        ("optional", True, True),
+        ("optional", False, False),
+        ("mandatory", None, True),
+        ("mandatory", True, True),
+        ("mandatory", False, True),
+    ],
+)
+def test_wants_label_follows_the_table(mode, requested, expected):
+    assert wants_label(mode, requested) is expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, None),
+        ("", None),
+        (True, True),
+        (False, False),
+        ("true", True),
+        ("false", False),
+        ("TRUE", True),
+        (" False ", False),
+    ],
+)
+def test_ai_label_values_that_are_understood(value, expected):
+    assert parse_ai_label(value) is expected
+
+
+@pytest.mark.parametrize("value", [1, 0, 1.0, "1", "yes", "on", [], {}])
+def test_other_ai_label_values_are_refused(value):
+    with pytest.raises(ValueError):
+        parse_ai_label(value)

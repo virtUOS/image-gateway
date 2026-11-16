@@ -56,3 +56,25 @@ def parse_guard_output(text: str) -> PromptResult:
     label = LABEL_RE.search(text)
     categories_line = text.split("Categories:", 1)[1] if "Categories:" in text else ""
     return PromptResult(label.group(1) if label else None, CATEGORY_RE.findall(categories_line))
+
+
+def parse_ai_label(value: object) -> bool | None:
+    """The request's "ai_label" field: a JSON boolean, or "true"/"false" from a form field.
+
+    None means the request did not say. Anything else raises ValueError, also 1 and 0: the
+    field is a yes/no question and a number is more likely a mistake than an answer.
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+        return value.strip().lower() == "true"
+    raise ValueError("ai_label must be true or false")
+
+
+def wants_label(mode: str, requested: bool | None) -> bool:
+    """Whether an image gets the visible label. "mandatory" ignores the request on purpose."""
+    if mode == "mandatory":
+        return True
+    return mode == "optional" and requested is True

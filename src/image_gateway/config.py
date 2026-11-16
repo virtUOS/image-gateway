@@ -1,5 +1,7 @@
 """Settings, read from GATEWAY_* environment variables (lists and dicts as JSON)."""
 
+from typing import Literal
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -26,6 +28,11 @@ DEFAULT_IMAGE_THRESHOLDS = {"sexual": 0.5, "dangerous": 0.5, "violence": 0.5}
 # character, so 8 characters fit. A longer or non-ASCII payload is not refused by TrustMark:
 # it comes back garbled ("AI-UNIVERSITY" decodes as "AI-UNIVEP", "KI-Ü" as "KI-\").
 WATERMARK_MAX_CHARS = 8
+
+# The visible label is drawn with Pillow's built-in font. It has every printable ASCII character
+# but no umlauts, typographic dashes or accents, and draws those as empty boxes without an
+# error. 40 characters still fit in a corner.
+AI_LABEL_MAX_CHARS = 40
 
 
 class Settings(BaseSettings):
@@ -60,6 +67,14 @@ class Settings(BaseSettings):
     watermark_model: str = "Q"
     watermark_strength: float = 1.0
 
+    # Visible label ("KI-generiert") in the bottom-right corner. Off by default: the invisible
+    # watermark is the machine-readable marking the AI Act asks for, and a visible label spoils
+    # images meant for posters or slides. It is here so a host can switch it on without a new
+    # release if its legal review asks for one. "optional": a request asks for it with
+    # "ai_label": true. "mandatory": every image gets it, whatever the request says.
+    ai_label: Literal["off", "optional", "mandatory"] = "off"
+    ai_label_text: str = "KI-generiert"
+
     device: str = "cuda"
 
     @field_validator("watermark_payload")
@@ -74,5 +89,20 @@ class Settings(BaseSettings):
             raise ValueError(
                 "must be printable ASCII (letters A-Z/a-z, digits, - _ . and the like, "
                 "no umlauts): other characters come back garbled from the watermark"
+            )
+        return value
+
+    @field_validator("ai_label_text")
+    @classmethod
+    def label_text_is_readable(cls, value: str) -> str:
+        if not value.strip() or len(value) > AI_LABEL_MAX_CHARS:
+            raise ValueError(
+                f"must be 1 to {AI_LABEL_MAX_CHARS} characters and not only spaces "
+                f"(got {len(value)}): the label has to show something and fit in a corner"
+            )
+        if not all(32 <= ord(char) <= 126 for char in value):
+            raise ValueError(
+                "must be printable ASCII (no umlauts, accents or typographic dashes like –): "
+                "the built-in font draws other characters as empty boxes"
             )
         return value

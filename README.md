@@ -87,6 +87,35 @@ text with `GATEWAY_WATERMARK_PAYLOAD`. It can be **up to 8 plain characters** (l
 hyphens), for example `AI-TUM` or `KI-UNI-X`. Longer text or special characters such as umlauts
 come back garbled, so the gateway refuses to start with them.
 
+## The visible label
+
+The gateway can also draw a small visible label in the bottom-right corner of each image. It
+says "KI-generiert" unless you set your own text with `GATEWAY_AI_LABEL_TEXT`. Your text can be
+**up to 40 plain characters**, for example `AI-generated` or `Mit KI erstellt`. The label uses
+Pillow's built-in font, which has no umlauts, accents or typographic dashes. It would draw them
+as empty boxes, so the gateway refuses to start with them.
+
+The label is **off by default**. The invisible watermark already provides the machine-readable
+marking. A visible label would spoil images that people want to use on posters or slides. The
+setting exists so that you can switch the label on without waiting for a new release, for
+example if your legal review asks for one.
+
+`GATEWAY_AI_LABEL` has three modes:
+
+- `off`: no image gets the label.
+- `optional`: an image gets the label when the request asks for it. Send `"ai_label": true` in
+  the JSON body of a generation, or the form field `ai_label=true` with an edit.
+- `mandatory`: every image gets the label. A request that sends `false` still gets it.
+
+Values other than `true` and `false` are refused with HTTP 400. The gateway removes the field
+before the request reaches the image model.
+
+Chat apps like LibreChat cannot send `ai_label`. For them, only `off` and `mandatory` make a
+difference. If a proxy such as LiteLLM sits in front of the gateway, check that it passes the
+field on.
+
+The label is drawn before the watermark, so the watermark covers the label too.
+
 ## Running it
 
 The image is published at `ghcr.io/virtuos/image-gateway`. It needs an NVIDIA GPU with about
@@ -134,6 +163,8 @@ All settings are environment variables. Lists and dictionaries are written as JS
 |---|---|---|
 | `GATEWAY_UPSTREAM_URL` | `http://vllm:8000` | Where the image model runs |
 | `GATEWAY_WATERMARK_PAYLOAD` | `KI-UOS` | Text in the watermark, up to 8 plain characters |
+| `GATEWAY_AI_LABEL` | `off` | Visible label: `off`, `optional` (each request decides) or `mandatory` |
+| `GATEWAY_AI_LABEL_TEXT` | `KI-generiert` | Text of the visible label, up to 40 plain characters (no umlauts) |
 | `GATEWAY_BLOCK_UNSAFE` | see [`config.py`](src/image_gateway/config.py) | Categories blocked when a prompt is rated unsafe |
 | `GATEWAY_BLOCK_CONTROVERSIAL` | `["Sexual Content or Sexual Acts"]` | Categories blocked even when a prompt is only rated controversial |
 | `GATEWAY_IMAGE_THRESHOLDS` | `{"sexual": 0.5, "dangerous": 0.5, "violence": 0.5}` | Score from which an image is blocked |
