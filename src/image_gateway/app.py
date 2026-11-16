@@ -1,7 +1,10 @@
 """The gateway: only the two image endpoints reach vLLM-Omni, and only through the checks.
 
-generations:  check prompt -> fill defaults -> generate -> check each image -> watermark
-edits:        check prompt -> check uploaded images -> fill defaults -> edit -> check -> watermark
+generations:  check prompt -> fill defaults -> generate -> check each image -> label -> watermark
+edits:        check prompt -> check uploaded images -> fill defaults -> edit -> check -> label
+              -> watermark
+
+The visible label is drawn only when the mode and the request's "ai_label" field ask for it.
 
 A checker that fails blocks the request (503); nothing passes unchecked. Logs and metrics carry
 decisions and scores, never prompt text or images.
@@ -29,7 +32,14 @@ from starlette.concurrency import run_in_threadpool
 
 from image_gateway import images
 from image_gateway.config import Settings
-from image_gateway.policy import PromptResult, Verdict, judge_image, judge_prompt
+from image_gateway.policy import (
+    PromptResult,
+    Verdict,
+    judge_image,
+    judge_prompt,
+    parse_ai_label,
+    wants_label,
+)
 
 log = logging.getLogger("image_gateway")
 
@@ -190,6 +200,14 @@ def create_app(
             )
         return prompt
 
+    def label_wanted(params: dict) -> bool:
+        """Takes "ai_label" out of the request (vLLM never sees it) and decides on the label."""
+        try:
+            requested = parse_ai_label(params.pop("ai_label", None))
+        except ValueError as exc:
+            raise invalid("ai_label must be true or false.", "ai_label") from exc
+        return wants_label(settings.ai_label, requested)
+
     def check_size(size: Any, allow_auto: bool) -> str | None:
         if size in (None, ""):
             return None
@@ -203,7 +221,12 @@ def create_app(
         return str(size)
 
     async def finish(
-        response: httpx.Response, fmt: str, compression: int, endpoint: str, request_id: str
+        response: httpx.Response,
+        fmt: str,
+        compression: int,
+        endpoint: str,
+        request_id: str,
+        label: bool,
     ) -> Response:
         if response.status_code != 200:
             return Response(
@@ -225,6 +248,8 @@ def create_app(
                     502, "The image model returned a broken image.", "upstream_bad"
                 ) from exc
             await check_image(image, "output", endpoint, request_id)
+            if label:  # before the watermark, so the watermark covers the label too
+                image = await on_gpu("label", images.add_label, image, settings.ai_label_text)
             if settings.watermark:
                 image = await on_gpu("watermark", watermarker.apply, image)
             item["b64_json"] = images.encode_b64(image, fmt, compression)
@@ -300,13 +325,14 @@ def create_app(
             body["n"] = max(1, min(int(body.get("n") or 1), settings.max_images))
         except (TypeError, ValueError) as exc:
             raise invalid("n must be a number.", "n") from exc
+        label = label_wanted(body)
 
         await check_prompt(prompt, "generations", request_id)
         fill_defaults(body)
         start = time.perf_counter()
         r = await upstream.post("/v1/images/generations", json=body)
         metrics.seconds.labels("generate").observe(time.perf_counter() - start)
-        return await finish(r, fmt, compression, "generations", request_id)
+        return await finish(r, fmt, compression, "generations", request_id, label)
 
     @app.post("/v1/images/edits")
     async def edits(request: Request):
@@ -337,6 +363,7 @@ def create_app(
         params["size"] = size or "auto"
         fmt = str(params.get("output_format") or "png").lower()
         compression = int(params.get("output_compression") or 100)
+        label = label_wanted(params)
 
         await check_prompt(prompt, "edits", request_id)
         for image in uploads:
@@ -349,7 +376,7 @@ def create_app(
         start = time.perf_counter()
         r = await upstream.post("/v1/images/edits", data=data, files=files)
         metrics.seconds.labels("generate").observe(time.perf_counter() - start)
-        return await finish(r, fmt, compression, "edits", request_id)
+        return await finish(r, fmt, compression, "edits", request_id, label)
 
     @app.api_route(
         "/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]

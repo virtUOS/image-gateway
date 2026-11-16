@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Optional visible label in the bottom-right corner of each image, "KI-generiert" by default
+  (`GATEWAY_AI_LABEL_TEXT`). `GATEWAY_AI_LABEL` switches it: `off` (the default), `optional`
+  (a request asks for it with `ai_label: true`) or `mandatory` (every image, whatever the
+  request says). Values of `ai_label` other than true and false get HTTP 400, and the field
+  never reaches vLLM-Omni. The label is drawn before the watermark, so the watermark covers it.
+
 ### Changed
 
 - The image runs Python 3.15 (was 3.12) and is built with uv 0.13.8. Checked on the GPU: every
