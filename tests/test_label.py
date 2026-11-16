@@ -1,7 +1,9 @@
 import pytest
 from PIL import Image, ImageChops
+from pydantic import ValidationError
 
-from image_gateway.images import add_label
+from image_gateway.config import AI_LABEL_MAX_CHARS, Settings
+from image_gateway.images import add_label, label_font
 
 from fakes import GREY
 
@@ -50,6 +52,23 @@ def test_transparency_is_kept_and_other_modes_work(mode, expected):
         assert out.getpixel((0, 0))[3] == 0  # away from the label, still transparent
 
 
-def test_umlauts_and_dashes_are_drawn():
-    image = Image.new("RGB", (512, 512), GREY)
-    assert changed(image, add_label(image, "Mit KI erzeugt – Ü"))
+@pytest.mark.parametrize(
+    "text",
+    [
+        "".join(map(chr, range(32, 127))),  # every printable ASCII character
+        "Mit KI erzeugt – Ü",
+        "Künstlich erzeugt",
+        "Généré par IA",
+        "KI\u200b",
+    ],
+)
+def test_the_settings_accept_only_text_the_label_font_can_draw(text):
+    """The built-in font draws a missing character as an empty box, without an error."""
+    try:
+        Settings(ai_label_text=text[:AI_LABEL_MAX_CHARS])
+    except ValidationError:
+        return
+    font = label_font(20)
+    box = bytes(font.getmask("\uffff"))
+    missing = [char for char in set(text) - {" "} if bytes(font.getmask(char)) == box]
+    assert not missing, f"accepted but drawn as boxes: {missing}"

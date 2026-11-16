@@ -9,7 +9,8 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - Optional visible label in the bottom-right corner of each image, "KI-generiert" by default
-  (`GATEWAY_AI_LABEL_TEXT`). `GATEWAY_AI_LABEL` switches it: `off` (the default), `optional`
+  (`GATEWAY_AI_LABEL_TEXT`, up to 40 printable ASCII characters, because the built-in font has
+  no umlauts). `GATEWAY_AI_LABEL` switches it: `off` (the default), `optional`
   (a request asks for it with `ai_label: true`) or `mandatory` (every image, whatever the
   request says). Values of `ai_label` other than true and false get HTTP 400, and the field
   never reaches vLLM-Omni. The label is drawn before the watermark, so the watermark covers it.

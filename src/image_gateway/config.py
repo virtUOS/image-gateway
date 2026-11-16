@@ -29,7 +29,9 @@ DEFAULT_IMAGE_THRESHOLDS = {"sexual": 0.5, "dangerous": 0.5, "violence": 0.5}
 # it comes back garbled ("AI-UNIVERSITY" decodes as "AI-UNIVEP", "KI-Ü" as "KI-\").
 WATERMARK_MAX_CHARS = 8
 
-# The visible label is drawn, not encoded, so any text fits that stays readable in a corner.
+# The visible label is drawn with Pillow's built-in font. It has every printable ASCII character
+# but no umlauts, typographic dashes or accents, and draws those as empty boxes without an
+# error. 40 characters still fit in a corner.
 AI_LABEL_MAX_CHARS = 40
 
 
@@ -98,6 +100,9 @@ class Settings(BaseSettings):
                 f"must be 1 to {AI_LABEL_MAX_CHARS} characters and not only spaces "
                 f"(got {len(value)}): the label has to show something and fit in a corner"
             )
-        if any(ord(char) < 32 for char in value):
-            raise ValueError("must be one line without control characters")
+        if not all(32 <= ord(char) <= 126 for char in value):
+            raise ValueError(
+                "must be printable ASCII (no umlauts, accents or typographic dashes like –): "
+                "the built-in font draws other characters as empty boxes"
+            )
         return value

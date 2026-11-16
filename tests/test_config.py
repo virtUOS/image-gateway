@@ -49,12 +49,24 @@ def test_an_unknown_label_mode_stops_startup(monkeypatch):
         Settings()
 
 
-@pytest.mark.parametrize("text", ["AI-generated", "Mit KI erzeugt – Ü", "x" * 40])
+@pytest.mark.parametrize("text", ["AI-generated", "Mit KI erzeugt", "x" * 40])
 def test_readable_label_texts_are_accepted(text):
     assert Settings(ai_label_text=text).ai_label_text == text
 
 
-@pytest.mark.parametrize("text", ["", "   ", "x" * 41, "KI\ngeneriert"])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "   ",
+        "x" * 41,
+        "KI\ngeneriert",
+        "Künstlich erzeugt",
+        "KI – generiert",
+        "KI\u200b",
+        "KI\x7f",
+    ],
+)
 def test_label_texts_that_would_hide_or_break_the_label_are_refused(text):
     with pytest.raises(ValidationError):
         Settings(ai_label_text=text)

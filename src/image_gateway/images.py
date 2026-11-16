@@ -60,8 +60,13 @@ def has_transparency(image: Image.Image) -> bool:
     return image.mode in ("RGBA", "LA", "PA") or "transparency" in image.info
 
 
+def label_font(size: int) -> ImageFont.FreeTypeFont:
+    """Pillow's built-in font, so no font files are needed. It covers printable ASCII only."""
+    return ImageFont.load_default(size=size)
+
+
 def _measure(text: str, size: int):
-    font = ImageFont.load_default(size=size)  # Pillow's built-in font, no font files needed
+    font = label_font(size)
     bbox = font.getbbox(text)
     pad = max(2, size // 3)
     return font, bbox, pad, bbox[2] - bbox[0] + 2 * pad, bbox[3] - bbox[1] + 2 * pad
