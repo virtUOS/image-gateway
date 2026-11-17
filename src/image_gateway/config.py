@@ -1,8 +1,10 @@
 """Settings, read from GATEWAY_* environment variables (lists and dicts as JSON)."""
 
+import os
+from pathlib import Path
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Qwen3Guard categories. "Unsafe" in any of these blocks a prompt. "Politically Sensitive
@@ -75,6 +77,20 @@ class Settings(BaseSettings):
     ai_label: Literal["off", "optional", "mandatory"] = "off"
     ai_label_text: str = "KI-generiert"
 
+    # Content Credentials (C2PA): a signed statement inside the image file that AI made it.
+    # Off by default, because it needs a signing certificate. The EU Code of Practice on
+    # marking AI-generated content asks for it next to the watermark on images.
+    # cert_file: PEM chain, signing certificate first. key_file: its PEM private key.
+    # tsa_url: an RFC 3161 timestamp server. The signature then carries a trusted time and
+    # stays verifiable after the certificate expires. Every image costs one call to it.
+    # software_agent: names the image model in the manifest, e.g. "FLUX.2 [klein] 4B".
+    c2pa: bool = False
+    c2pa_cert_file: Path | None = None
+    c2pa_key_file: Path | None = None
+    c2pa_alg: Literal["es256", "es384", "es512", "ps256", "ps384", "ps512", "ed25519"] = "es256"
+    c2pa_tsa_url: str | None = None
+    c2pa_software_agent: str | None = None
+
     device: str = "cuda"
 
     @field_validator("watermark_payload")
@@ -106,3 +122,15 @@ class Settings(BaseSettings):
                 "the built-in font draws other characters as empty boxes"
             )
         return value
+
+    @model_validator(mode="after")
+    def c2pa_has_its_files(self) -> "Settings":
+        if not self.c2pa:
+            return self
+        for name in ("c2pa_cert_file", "c2pa_key_file"):
+            path = getattr(self, name)
+            if path is None:
+                raise ValueError(f"GATEWAY_{name.upper()} must be set when GATEWAY_C2PA is on")
+            if not path.is_file() or not os.access(path, os.R_OK):
+                raise ValueError(f"GATEWAY_{name.upper()}: {path} is not a readable file")
+        return self
