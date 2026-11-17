@@ -44,7 +44,11 @@ def decode_b64(data: str) -> Image.Image:
     return decode_bytes(raw)
 
 
-def encode_b64(image: Image.Image, output_format: str, compression: int = 100) -> str:
+def encode(image: Image.Image, output_format: str, compression: int = 100) -> tuple[bytes, str]:
+    """The encoded image and the format it was written in (PNG, JPEG or WEBP).
+
+    An unknown output_format falls back to PNG.
+    """
     fmt = FORMATS.get(output_format.lower(), "PNG")
     buffer = io.BytesIO()
     if fmt == "PNG":
@@ -53,7 +57,7 @@ def encode_b64(image: Image.Image, output_format: str, compression: int = 100) -
         if fmt == "JPEG" and image.mode not in ("RGB", "L"):
             image = image.convert("RGB")
         image.save(buffer, format=fmt, quality=max(1, min(int(compression), 100)))
-    return base64.b64encode(buffer.getvalue()).decode("ascii")
+    return buffer.getvalue(), fmt
 
 
 def has_transparency(image: Image.Image) -> bool:

@@ -1,15 +1,18 @@
 """The gateway: only the two image endpoints reach vLLM-Omni, and only through the checks.
 
 generations:  check prompt -> fill defaults -> generate -> check each image -> label -> watermark
+              -> encode -> sign
 edits:        check prompt -> check uploaded images -> fill defaults -> edit -> check -> label
-              -> watermark
+              -> watermark -> encode -> sign
 
 The visible label is drawn only when the mode and the request's "ai_label" field ask for it.
+Signing (C2PA Content Credentials) runs only when GATEWAY_C2PA is on.
 
-A checker that fails blocks the request (503); nothing passes unchecked. Logs and metrics carry
-decisions and scores, never prompt text or images.
+A checker, the watermark or the signer that fails blocks the request (503); nothing passes
+unchecked or unmarked. Logs and metrics carry decisions and scores, never prompt text or images.
 """
 
+import base64
 import logging
 import threading
 import time
@@ -32,6 +35,7 @@ from starlette.concurrency import run_in_threadpool
 
 from image_gateway import images
 from image_gateway.config import Settings
+from image_gateway.credentials import ContentCredentials
 from image_gateway.policy import (
     PromptResult,
     Verdict,
@@ -62,6 +66,10 @@ class ImageGuard(Protocol):
 
 class Watermarker(Protocol):
     def apply(self, image: Image.Image) -> Image.Image: ...
+
+
+class Signer(Protocol):
+    def sign(self, data: bytes, image_format: str, edit: bool) -> bytes: ...
 
 
 class GatewayError(Exception):
@@ -118,9 +126,20 @@ def create_app(
     prompt_guard: PromptGuard | None = None,
     image_guard: ImageGuard | None = None,
     watermarker: Watermarker | None = None,
+    signer: Signer | None = None,
     upstream_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
+    if signer is None and settings.c2pa:
+        # Raises CredentialsError for a certificate or key that can't sign: no start then.
+        signer = ContentCredentials.from_files(
+            settings.c2pa_cert_file,
+            settings.c2pa_key_file,
+            alg=settings.c2pa_alg,
+            tsa_url=settings.c2pa_tsa_url,
+            software_agent=settings.c2pa_software_agent,
+            watermark="TrustMark" if settings.watermark else None,
+        )
     if prompt_guard is None or image_guard is None or watermarker is None:
         from image_gateway import models  # torch, transformers, trustmark: container only
 
@@ -150,11 +169,17 @@ def create_app(
             with gpu:
                 return fn(*args)
 
+        return await in_stage(stage, run)
+
+    async def on_cpu(stage: str, fn, *args):
+        return await in_stage(stage, lambda: fn(*args))
+
+    async def in_stage(stage: str, run):
         start = time.perf_counter()
         try:
             return await run_in_threadpool(run)
         except Exception as exc:
-            log.exception("checker failed at stage %s", stage)
+            log.exception("stage %s failed", stage)
             raise GatewayError(
                 503,
                 "The safety check of this image service is unavailable; try again later.",
@@ -252,7 +277,10 @@ def create_app(
                 image = await on_gpu("label", images.add_label, image, settings.ai_label_text)
             if settings.watermark:
                 image = await on_gpu("watermark", watermarker.apply, image)
-            item["b64_json"] = images.encode_b64(image, fmt, compression)
+            data, image_format = images.encode(image, fmt, compression)
+            if signer is not None:  # last: the signature covers the final bytes
+                data = await on_cpu("sign", signer.sign, data, image_format, endpoint == "edits")
+            item["b64_json"] = base64.b64encode(data).decode("ascii")
         payload["output_format"] = fmt
         metrics.requests.labels(endpoint, "ok").inc()
         return JSONResponse(payload)

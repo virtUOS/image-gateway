@@ -6,8 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-17
+
 ### Added
 
+- Optional C2PA Content Credentials (`GATEWAY_C2PA`, off by default): every returned image gets
+  a signed manifest that says AI created it (IPTC `trainedAlgorithmicMedia`) or edited an
+  uploaded image (`compositeWithTrainedAlgorithmicMedia`), that a TrustMark watermark was added,
+  and optionally the image model (`GATEWAY_C2PA_SOFTWARE_AGENT`). With the watermark this gives
+  the two layers the EU Code of Practice asks for on images. The manifest carries no prompt
+  text, user data, uploaded images or thumbnail. Certificate and key come from PEM files
+  (`GATEWAY_C2PA_CERT_FILE`, `GATEWAY_C2PA_KEY_FILE`). `GATEWAY_C2PA_TSA_URL` adds an RFC 3161
+  timestamp. The gateway signs a test image at startup and refuses to start with a certificate
+  or key that can't sign. A signing failure at request time returns 503 like a failed check.
+  New dependency: c2pa-python 0.38.
 - Optional visible label in the bottom-right corner of each image, "KI-generiert" by default
   (`GATEWAY_AI_LABEL_TEXT`, up to 40 printable ASCII characters, because the built-in font has
   no umlauts). `GATEWAY_AI_LABEL` switches it: `off` (the default), `optional`
@@ -40,5 +52,6 @@ All notable changes to this project are documented here. The format follows
   guidance 1.0; a client's own values win. Remote image URLs and overlong prompts are refused.
 - Prometheus counters at `/gateway/metrics`; logs carry decisions and scores, never prompt text.
 
-[Unreleased]: https://github.com/virtUOS/image-gateway/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/virtUOS/image-gateway/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/virtUOS/image-gateway/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/virtUOS/image-gateway/releases/tag/v0.1.0

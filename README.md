@@ -2,7 +2,8 @@
 
 A small service that sits in front of a self-hosted image model and makes it safe to offer to
 users. It checks what people ask for and what the model produces, blocks harmful content, and
-adds an invisible watermark that marks every image as AI-generated.
+adds an invisible watermark that marks every image as AI-generated. With a signing certificate
+it also signs every image with Content Credentials (C2PA).
 
 We built it at the University of Osnabrück for [FLUX.2 [klein]](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B)
 served by [vLLM-Omni](https://github.com/vllm-project/vllm-omni). It speaks the OpenAI image API,
@@ -25,7 +26,8 @@ When someone asks for an image, the gateway:
 3. **Fills in defaults** that the model needs, such as size and number of steps.
 4. **Lets the model generate or edit** the image.
 5. **Checks the result** with the image safety model. A harmful result is never returned.
-6. **Adds the watermark** and sends the image back.
+6. **Adds the watermark.**
+7. **Signs the image** with Content Credentials, if you switched them on, and sends it back.
 
 Each check takes about 0.3 seconds on an NVIDIA L40S. A typical image takes around 3 seconds
 from request to answer.
@@ -68,9 +70,10 @@ The logs and metrics record what was decided and why, but never the prompt or th
 ## The watermark
 
 Every image the gateway returns carries an invisible watermark made with
-[TrustMark](https://github.com/adobe/trustmark) (MIT licence, code and model weights). This is
-the machine-readable marking that the EU AI Act (Article 50(2)) requires for AI-generated
-images.
+[TrustMark](https://github.com/adobe/trustmark) (MIT licence, code and model weights). The EU AI
+Act (Article 50(2)) requires machine-readable marking of AI-generated images. The watermark is
+one of the two layers the EU Code of Practice asks for. [Content
+Credentials](#content-credentials-c2pa) are the other.
 
 The watermark survives resizing, cropping and JPEG compression. That matters in practice: chat
 apps like LibreChat re-encode generated images and drop any metadata, but the watermark stays.
@@ -86,6 +89,84 @@ text, present, _ = TrustMark(model_type="Q").decode(image, MODE="text")
 text with `GATEWAY_WATERMARK_PAYLOAD`. It can be **up to 8 plain characters** (letters, digits,
 hyphens), for example `AI-TUM` or `KI-UNI-X`. Longer text or special characters such as umlauts
 come back garbled, so the gateway refuses to start with them.
+
+## Content Credentials (C2PA)
+
+The gateway can also sign every image with [Content Credentials](https://c2pa.org/), the C2PA
+standard. They are a manifest inside the image file. It states that AI made the image, with
+which software, and the signature shows any later change to the image or the manifest.
+
+Why both? The EU Code of Practice on marking AI-generated content asks for two machine-readable
+layers on images: digitally signed metadata and an invisible watermark. Each covers the other's
+weakness. Anyone can read the metadata with free tools, but it is lost when an app re-encodes
+the image. The watermark survives that, but only TrustMark can find it.
+
+The manifest records:
+
+- that AI created the image (IPTC source type `trainedAlgorithmicMedia`), or that it is an AI
+  edit of an uploaded image (`compositeWithTrainedAlgorithmicMedia`)
+- the image model, if you name it in `GATEWAY_C2PA_SOFTWARE_AGENT`
+- that a TrustMark watermark was added, when the watermark is on (`c2pa.watermarked.unbound`:
+  the watermark carries your payload, not a link to the manifest)
+- the gateway and its version
+
+It never contains the prompt, user data or the uploaded images. Nothing in it comes from the
+request. It has no thumbnail either, so an image grows by only a few kilobytes. Signing takes a
+few milliseconds.
+
+Switch it on with a certificate and its key:
+
+```yaml
+image-gateway:
+  environment:
+    GATEWAY_C2PA: "true"
+    GATEWAY_C2PA_CERT_FILE: /run/secrets/c2pa/chain.pem
+    GATEWAY_C2PA_KEY_FILE: /run/secrets/c2pa/key.pem
+    GATEWAY_C2PA_TSA_URL: "<an RFC 3161 timestamp server, for example your CA's>"
+    GATEWAY_C2PA_SOFTWARE_AGENT: "FLUX.2 [klein] 4B"
+  volumes:
+    - ./c2pa:/run/secrets/c2pa:ro
+```
+
+**The certificate.** The certificate file holds the signing certificate first, then the CA
+certificates above it. The key file holds the signing certificate's private key, so keep it as
+secret as any other key. C2PA has rules for signing certificates. A CA must have issued the
+certificate, it must allow digital signatures, and it needs an extended key usage such as email
+protection or document signing. The gateway signs a test image at startup. If the certificate
+or the key doesn't work, it refuses to start.
+
+Where the certificate comes from decides what verifiers show:
+
+- **Your own CA:** the signature is valid and every statement can be read. Public verifiers
+  such as [contentcredentials.org/verify](https://contentcredentials.org/verify) don't know your
+  CA, though, and show the signer as unknown.
+- **A CA on the C2PA trust list:** verifiers show the signer as trusted. Such certificates usually
+  cost money. See [c2pa.org](https://c2pa.org/) for the conformance programme and its trust list.
+
+**The timestamp.** The Code of Practice asks for metadata that is signed and time-stamped. With
+`GATEWAY_C2PA_TSA_URL` the gateway asks a timestamp server for every image. The signature then
+proves when it was made, and it stays verifiable after the certificate expires. The server only
+sees a hash, never the image. Each image costs one call, about 0.4 seconds in our tests.
+Without a timestamp server the signature carries no time.
+
+If signing fails, for example because the timestamp server is down, the gateway answers 503 and
+returns no image. It never sends an image out unmarked.
+
+**Where Content Credentials get lost.** An app that re-encodes the image drops the manifest.
+LibreChat does this with every generated image today. A pull request adds an option to store
+them unchanged ([LibreChat#18245](https://github.com/LibreChat-AI/LibreChat/pull/18245)). Copying
+the manifest over would not help, because the signature covers the exact bytes of the image. Clients that store the image
+as they receive it keep the manifest. The watermark survives in both cases.
+
+To check an image, upload it to [contentcredentials.org/verify](https://contentcredentials.org/verify),
+use the `c2patool` command line tool, or read it in Python:
+
+```python
+import c2pa
+
+with open("image.png", "rb") as f, c2pa.Reader("image/png", f) as reader:
+    print(reader.get_validation_state(), reader.json())
+```
 
 ## The visible label
 
@@ -165,6 +246,12 @@ All settings are environment variables. Lists and dictionaries are written as JS
 | `GATEWAY_WATERMARK_PAYLOAD` | `KI-UOS` | Text in the watermark, up to 8 plain characters |
 | `GATEWAY_AI_LABEL` | `off` | Visible label: `off`, `optional` (each request decides) or `mandatory` |
 | `GATEWAY_AI_LABEL_TEXT` | `KI-generiert` | Text of the visible label, up to 40 plain characters (no umlauts) |
+| `GATEWAY_C2PA` | `false` | Sign every image with Content Credentials |
+| `GATEWAY_C2PA_CERT_FILE` | none | PEM file: the signing certificate first, then its CA certificates |
+| `GATEWAY_C2PA_KEY_FILE` | none | PEM file with the signing certificate's private key |
+| `GATEWAY_C2PA_ALG` | `es256` | Signature algorithm that fits the key: `es256`, `es384`, `es512`, `ps256`, `ps384`, `ps512` or `ed25519` |
+| `GATEWAY_C2PA_TSA_URL` | none | RFC 3161 timestamp server, recommended |
+| `GATEWAY_C2PA_SOFTWARE_AGENT` | none | Name of the image model in the manifest |
 | `GATEWAY_BLOCK_UNSAFE` | see [`config.py`](src/image_gateway/config.py) | Categories blocked when a prompt is rated unsafe |
 | `GATEWAY_BLOCK_CONTROVERSIAL` | `["Sexual Content or Sexual Acts"]` | Categories blocked even when a prompt is only rated controversial |
 | `GATEWAY_IMAGE_THRESHOLDS` | `{"sexual": 0.5, "dangerous": 0.5, "violence": 0.5}` | Score from which an image is blocked |
@@ -186,8 +273,9 @@ A client's own values always win over the defaults. So when someone asks for 8 s
 - **ShieldGemma 2 judges gore, not threats.** A picture of someone aiming a gun at people, with
   no injury shown, passes the image check. The prompt check stops such requests before an image
   is made.
-- **No C2PA content credentials yet.** They would be stripped by most chat apps anyway, which
-  is why the watermark does the marking.
+- **Content Credentials need a client that keeps them.** LibreChat re-encodes every generated
+  image and drops them, unless a pending option to keep the original is merged and switched on.
+  The watermark still marks those images.
 
 ## Development
 
