@@ -1,6 +1,6 @@
 [project]
 name = "image-gateway"
-version = "0.1.0"
+version = "0.2.0"
 description = "Safety and marking gateway in front of an OpenAI-compatible image API (vLLM-Omni): prompt and image checks, invisible watermark, sane defaults"
 readme = "README.md"
 license = "MIT"
